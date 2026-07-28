@@ -1,0 +1,13 @@
+[repository]
+name = "hypr-alt-tab"
+authors = ["alex"]
+
+[hypr-alt-tab]
+description = "Windows-style Alt-Tab window switcher with live preview"
+authors = ["alex"]
+output = "build-cmake/libhypr-alt-tab.so"
+build = [
+  "cmake -E rm -f build-cmake/CMakeCache.txt",
+  "cmake -DCMAKE_BUILD_TYPE=Release -B build-cmake",
+  "cmake --build build-cmake -j $(nproc)"
+]

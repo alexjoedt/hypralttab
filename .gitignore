@@ -1,0 +1,9 @@
+build/
+build-cmake/
+build-meson/
+*.so
+compile_commands.json
+.cache/
+Testing/
+*.o
+*.d
