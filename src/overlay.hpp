@@ -29,8 +29,8 @@ class Overlay {
     void damage();
 
   private:
-    void onRenderStage(eRenderStage stage);
-    void draw();
+    void onRenderStage(const Event::SRenderStageEvent& ev);
+    void draw(Render::CRenderContext& ctx);
     void forceCandidatesVisible(bool enable);
     void restoreForcedVisibility();
     void forceWindowSurfaces(const PHLWINDOW& window);

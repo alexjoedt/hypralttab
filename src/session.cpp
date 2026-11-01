@@ -13,7 +13,7 @@
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/config/ConfigValue.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/desktop/view/types/Geometric.hpp>
 #include <hyprland/src/helpers/Color.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
@@ -47,18 +47,18 @@ std::string asciiLower(std::string value) {
     return value;
 }
 
-std::optional<uint32_t> releaseModifierMask(const std::string& value) {
+std::optional<Input::ModifierMask> releaseModifierMask(const std::string& value) {
     const auto lowered = asciiLower(value);
     if (lowered == "shift" || lowered == "shift_l" || lowered == "shift_r")
-        return HL_MODIFIER_SHIFT;
+        return Input::HL_MODIFIER_SHIFT;
     if (lowered == "ctrl" || lowered == "control" || lowered == "control_l" || lowered == "control_r" || lowered == "ctrl_l" ||
         lowered == "ctrl_r")
-        return HL_MODIFIER_CTRL;
+        return Input::HL_MODIFIER_CTRL;
     if (lowered == "alt" || lowered == "alt_l" || lowered == "alt_r")
-        return HL_MODIFIER_ALT;
+        return Input::HL_MODIFIER_ALT;
     if (lowered == "super" || lowered == "super_l" || lowered == "super_r" || lowered == "meta" || lowered == "meta_l" ||
         lowered == "meta_r")
-        return HL_MODIFIER_META;
+        return Input::HL_MODIFIER_META;
     return std::nullopt;
 }
 
@@ -336,7 +336,7 @@ void SwitchSession::beginClose(CloseMode mode) {
 
     if (mode == CloseMode::ActivateSelection) {
         auto target = selectedWindow();
-        if (!target || !target->m_isMapped)
+        if (!target || !target->mapped())
             target = m_focusBeforeOpen;
         m_pendingExitFocus = target;
     } else {
@@ -375,7 +375,7 @@ void SwitchSession::finishClose() {
 }
 
 void SwitchSession::applyFocus(const PHLWINDOW& window) {
-    if (!window || !window->m_isMapped || !Desktop::focusState())
+    if (!window || !window->mapped() || !Desktop::focusState())
         return;
 
     // Cross-workspace: move monitor to window's workspace first when needed.
@@ -424,9 +424,9 @@ void SwitchSession::restoreCompositorTweaks() {
 bool SwitchSession::releaseKeyHeld() const {
     const auto key = cfg::releaseKey();
     if (const auto mask = releaseModifierMask(key))
-        return anyKeyboardMatches([&](const SP<IKeyboard>& kb) { return kb && (kb->getModifiers() & *mask) != 0; });
+        return anyKeyboardMatches([&](const SP<IKeyboard>& kb) { return kb && (static_cast<uint32_t>(kb->getModifiers()) & static_cast<uint32_t>(*mask)) != 0; });
 
-    return anyKeyboardMatches([](const SP<IKeyboard>& kb) { return kb && (kb->getModifiers() & HL_MODIFIER_ALT) != 0; });
+    return anyKeyboardMatches([](const SP<IKeyboard>& kb) { return kb && (static_cast<uint32_t>(kb->getModifiers()) & static_cast<uint32_t>(Input::HL_MODIFIER_ALT)) != 0; });
 }
 
 bool SwitchSession::isReleaseKeyEvent(const IKeyboard::SKeyEvent& event, const SP<IKeyboard>& keyboard) const {
@@ -440,13 +440,13 @@ bool SwitchSession::isReleaseKeyEvent(const IKeyboard::SKeyEvent& event, const S
     const xkb_keysym_t eventSym = xkb_state_key_get_one_sym(keyboard->m_xkbState, event.keycode + 8);
 
     if (const auto mask = releaseModifierMask(key)) {
-        if (mask == HL_MODIFIER_ALT && isAltKeysym(eventSym))
+        if (mask == Input::HL_MODIFIER_ALT && isAltKeysym(eventSym))
             return true;
-        if (mask == HL_MODIFIER_META && (eventSym == XKB_KEY_Super_L || eventSym == XKB_KEY_Super_R || eventSym == XKB_KEY_Meta_L || eventSym == XKB_KEY_Meta_R))
+        if (mask == Input::HL_MODIFIER_META && (eventSym == XKB_KEY_Super_L || eventSym == XKB_KEY_Super_R || eventSym == XKB_KEY_Meta_L || eventSym == XKB_KEY_Meta_R))
             return true;
-        if (mask == HL_MODIFIER_CTRL && (eventSym == XKB_KEY_Control_L || eventSym == XKB_KEY_Control_R))
+        if (mask == Input::HL_MODIFIER_CTRL && (eventSym == XKB_KEY_Control_L || eventSym == XKB_KEY_Control_R))
             return true;
-        if (mask == HL_MODIFIER_SHIFT && (eventSym == XKB_KEY_Shift_L || eventSym == XKB_KEY_Shift_R))
+        if (mask == Input::HL_MODIFIER_SHIFT && (eventSym == XKB_KEY_Shift_L || eventSym == XKB_KEY_Shift_R))
             return true;
     }
 

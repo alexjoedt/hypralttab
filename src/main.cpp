@@ -6,7 +6,6 @@
 #include <hyprland/src/desktop/DesktopTypes.hpp>
 #include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/helpers/Color.hpp>
-#include <hyprland/src/managers/KeybindManager.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
 
 extern "C" {
@@ -50,9 +49,13 @@ SDispatchResult dispatchPrev(const std::string&) {
 // from a live __lua keybind callback; at bind registration they return a
 // zero-arg action that calls _run (always executes).
 
-bool insideLuaKeybind() {
-    return g_pKeybindManager && g_pKeybindManager->m_currentKeybind &&
-           g_pKeybindManager->m_currentKeybind->handler == "__lua";
+bool insideLuaKeybind(lua_State* L) {
+    lua_Debug ar;
+    for (int level = 0; lua_getstack(L, level, &ar); ++level) {
+        if (lua_getinfo(L, "S", &ar) && ar.what && std::string_view{ar.what} == "main")
+            return false;
+    }
+    return true;
 }
 
 SDispatchResult (*dispatcherByName(const char* name))(const std::string&) {
@@ -81,7 +84,7 @@ int luaRun(lua_State* L) {
 }
 
 int runOrBindDispatcher(lua_State* L, const char* name) {
-    if (insideLuaKeybind())
+    if (insideLuaKeybind(L))
         return runNamedDispatcher(L, name);
 
     // Bind-time: return action that always executes via _run (no re-entry trap).

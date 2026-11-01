@@ -3,9 +3,9 @@
 #include <algorithm>
 
 #include <hyprland/src/desktop/DesktopTypes.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/desktop/state/ViewState.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/desktop/view/types/Geometric.hpp>
 
 namespace alttab {
@@ -28,7 +28,7 @@ bool windowHasUsableGeometry(const PHLWINDOW& window) {
 } // namespace
 
 bool isSwitchableWindow(const PHLWINDOW& window, bool includeSpecial) {
-    if (!window || !window->m_isMapped || window->isHidden())
+    if (!window || !window->mapped() || window->isHidden())
         return false;
 
     if (!windowHasUsableGeometry(window))
@@ -37,7 +37,7 @@ bool isSwitchableWindow(const PHLWINDOW& window, bool includeSpecial) {
     if (!includeSpecial && window->onSpecialWorkspace())
         return false;
 
-    if (!includeSpecial && window->m_workspace && window->m_workspace->m_isSpecialWorkspace)
+    if (!includeSpecial && window->m_workspace && window->m_workspace->type() == Workspace::eWorkspaceType::SPECIAL)
         return false;
 
     return true;
@@ -55,7 +55,7 @@ void MruTracker::recordActivation(const PHLWINDOW& window) {
     if (m_paused)
         return;
 
-    if (!window || !window->m_isMapped || window->isHidden())
+    if (!window || !window->mapped() || window->isHidden())
         return;
 
     prune();
@@ -66,7 +66,7 @@ void MruTracker::prune(const PHLWINDOW& removed) {
     if (removed)
         m_serials.erase(removed);
 
-    std::erase_if(m_serials, [](const auto& entry) { return !entry.first || !entry.first->m_isMapped; });
+    std::erase_if(m_serials, [](const auto& entry) { return !entry.first || !entry.first->mapped(); });
 }
 
 std::uint64_t MruTracker::serialOf(const PHLWINDOW& window) const {

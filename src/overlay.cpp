@@ -3,10 +3,10 @@
 #include <cmath>
 
 #include <hyprland/src/SharedDefs.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/desktop/state/GlobalWindowController.hpp>
 #include <hyprland/src/desktop/view/WLSurface.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/protocols/core/Compositor.hpp>
@@ -22,7 +22,7 @@ Overlay::~Overlay() {
 
 void Overlay::attach(SwitchSession* session) {
     m_session = session;
-    m_renderListener = Event::bus()->m_events.render.stage.listen([this](eRenderStage stage) { onRenderStage(stage); });
+    m_renderListener = Event::bus()->m_events.render.stage.listen([this](const Event::SRenderStageEvent& ev) { onRenderStage(ev); });
 }
 
 void Overlay::detach() {
@@ -38,8 +38,6 @@ void Overlay::onSessionOpened() {
 
 void Overlay::onSessionClosed() {
     restoreForcedVisibility();
-    if (g_pHyprRenderer)
-        g_pHyprRenderer->m_renderPass.removeAllOfType("CRectPassElement"); // best-effort; elements are per-frame
     damage();
 }
 
@@ -56,17 +54,17 @@ void Overlay::damage() {
     m_blockDamage = false;
 }
 
-void Overlay::onRenderStage(eRenderStage stage) {
-    if (stage != RENDER_POST_WINDOWS)
+void Overlay::onRenderStage(const Event::SRenderStageEvent& ev) {
+    if (ev.stage != RENDER_POST_WINDOWS || !ev.context)
         return;
 
     if (!m_session || !m_session->visible())
         return;
 
-    draw();
+    draw(ev.context->get());
 }
 
-void Overlay::draw() {
+void Overlay::draw(Render::CRenderContext& ctx) {
     if (!m_session || !g_pHyprRenderer)
         return;
 
@@ -75,7 +73,7 @@ void Overlay::draw() {
         return;
 
     // Only draw on the session owner monitor's current pass.
-    if (g_pHyprRenderer->m_renderData.pMonitor != monitor)
+    if (ctx.m_data.pMonitor != monitor)
         return;
 
     const auto now = Time::steadyNow();
@@ -84,9 +82,9 @@ void Overlay::draw() {
     const double scale = monitor->m_scale > 0.F ? monitor->m_scale : 1.F;
 
     // Known-good clip for chrome; never leave default CBox() junk in renderData.
-    g_pHyprRenderer->m_renderData.clipBox = CBox{{0, 0}, monitor->m_transformedSize};
+    ctx.m_data.clipBox = CBox{{0, 0}, monitor->m_transformedSize};
 
-    renderBackdrop(monitor, 0.55F);
+    renderBackdrop(ctx, monitor, 0.55F);
 
     for (std::size_t i = 0; i < layout.size(); ++i) {
         const auto& entry = layout[i];
@@ -102,8 +100,8 @@ void Overlay::draw() {
             entry.box.h * scale,
         };
 
-        renderLivePreview(monitor, window, boxPx, now);
-        renderEntryLabels(monitor, window, boxPx, i == selected);
+        renderLivePreview(ctx, monitor, window, boxPx, now);
+        renderEntryLabels(ctx, monitor, window, boxPx, i == selected);
 
         if (i == selected) {
             const CBox ring{
@@ -112,11 +110,11 @@ void Overlay::draw() {
                 boxPx.w + 8,
                 boxPx.h + 8,
             };
-            renderSelectionRing(monitor, ring, 3.F);
+            renderSelectionRing(ctx, monitor, ring, 3.F);
         }
     }
 
-    g_pHyprRenderer->m_renderData.clipBox = CBox{{0, 0}, monitor->m_transformedSize};
+    ctx.m_data.clipBox = CBox{{0, 0}, monitor->m_transformedSize};
 }
 
 void Overlay::forceCandidatesVisible(bool enable) {
@@ -139,13 +137,13 @@ void Overlay::forceCandidatesVisible(bool enable) {
         ForcedWindow fw;
         fw.window      = window;
         fw.wasHidden   = window->isHidden();
-        fw.fullscreenA = window->alphaValue(kFsAlpha);
+        fw.fullscreenA = window->alpha()[kFsAlpha]->value();
 
         if (fw.wasHidden)
             window->setHidden(false);
         // Keep last buffer alive for off-workspace tiles; compositor re-suspends on close.
         window->setSuspended(false);
-        window->alpha(kFsAlpha)->setValueAndWarp(1.F);
+        window->alpha()[kFsAlpha]->setValueAndWarp(1.F);
 
         forceWindowSurfaces(window);
         m_forcedWindows.push_back(std::move(fw));
@@ -166,14 +164,14 @@ void Overlay::forceCandidatesVisible(bool enable) {
 
         ForcedWorkspace fws;
         fws.workspace        = workspace;
-        fws.visible          = workspace->m_visible;
+        fws.visible          = workspace->visible();
         fws.forceRendering   = workspace->m_forceRendering;
         fws.alphaValue       = workspace->m_alpha ? workspace->m_alpha->value() : 1.F;
         fws.alphaGoal        = workspace->m_alpha ? workspace->m_alpha->goal() : 1.F;
         fws.renderOffsetVal  = workspace->m_renderOffset ? workspace->m_renderOffset->value() : Vector2D{};
         fws.renderOffsetGoal = workspace->m_renderOffset ? workspace->m_renderOffset->goal() : Vector2D{};
 
-        workspace->m_visible        = true;
+        workspace->setVisible(true);
         workspace->m_forceRendering = true;
         if (workspace->m_renderOffset) {
             workspace->m_renderOffset->setValueAndWarp(Vector2D{});
@@ -204,7 +202,7 @@ void Overlay::restoreForcedVisibility() {
         if (!fws.workspace)
             continue;
 
-        fws.workspace->m_visible        = fws.visible;
+        fws.workspace->setVisible(fws.visible);
         fws.workspace->m_forceRendering = fws.forceRendering;
         if (fws.workspace->m_renderOffset) {
             fws.workspace->m_renderOffset->setValueAndWarp(fws.renderOffsetVal);
@@ -224,7 +222,7 @@ void Overlay::restoreForcedVisibility() {
         if (!window)
             continue;
 
-        window->alpha(kFsAlpha)->setValueAndWarp(fw.fullscreenA);
+        window->alpha()[kFsAlpha]->setValueAndWarp(fw.fullscreenA);
         if (fw.wasHidden)
             window->setHidden(true);
     }
