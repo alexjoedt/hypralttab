@@ -25,7 +25,7 @@ if(CMAKE_EXPORT_COMPILE_COMMANDS)
 endif()
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(HYPR_DEPS REQUIRED hyprland pixman-1 libdrm pangocairo xkbcommon lua5.4)
+pkg_check_modules(HYPR_DEPS REQUIRED hyprland pixman-1 libdrm pangocairo xkbcommon lua5.5)
 
 add_library(hypr-alt-tab SHARED
   src/main.cpp
